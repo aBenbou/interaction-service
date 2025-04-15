@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # Interaction Service
+  interaction_api:
+    build:
+      context: ./interaction-service
+      dockerfile: Dockerfile
+    ports:
+      - "5002:5002"
+    depends_on:
+      - interaction_db
+      - auth_api
+      - profile_api
+      - model_api
+    env_file:
+      - ./interaction-service/.env
+    environment:
+      - MODEL_SERVICE_URL=http://model_api:8000
+    volumes:
+      - ./interaction-service:/app
+    networks:
+      - app_network
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Waiting for database to be ready...' &&
+        until PGPASSWORD=postgres pg_isready -h interaction_db -p 5432 -U postgres; do
+          echo 'Database not ready yet - waiting...' &&
+          sleep 2;
+        done &&
+        echo 'Database ready, starting app...' &&
+        gunicorn --bind 0.0.0.0:5002 "run:app"
+      "
+
+  interaction_db:
+    image: postgres:15
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-interaction_db}
+    volumes:
+      - interaction_postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+    restart: unless-stopped
+
+  # Model Service
+  model_api:
+    build:
+      context: ./model-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./model-service/.env
+    environment:
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - HUGGING_FACE_HUB_KEY=${HUGGING_FACE_HUB_KEY}
+    volumes:
+      - ./model-service:/app
+    networks:
+      - app_network
+    restart: unless-stopped
+
+networks:
+  app_network:
+    driver: bridge
+
+volumes:
+  interaction_postgres_data:
