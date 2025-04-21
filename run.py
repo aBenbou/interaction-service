@@ -1,63 +1,110 @@
-#!/usr/bin/env python3
-import sys
+# run.py
 import os
-import argparse
-from app import create_app
-
-# Make sure the app directory is in the Python path
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+import click
+from app import create_app, db
+from app.models.dimension import EvaluationDimension
 
 app = create_app()
 
-def main():
-    parser = argparse.ArgumentParser(description="Interaction API Server")
-    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+@app.cli.command("setup-initial-data")
+def setup_initial_data():
+    """Set up initial data in the database."""
+    from app.utils.model_constants import DEFAULT_EVALUATION_DIMENSIONS
     
-    # Run server command
-    run_parser = subparsers.add_parser("run", help="Run the API server")
-    run_parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    run_parser.add_argument("--port", type=int, default=5002, help="Port to bind to")
-    run_parser.add_argument("--debug", action="store_true", help="Run in debug mode")
+    print("Setting up initial data...")
     
-    # Migration commands
-    migrate_parser = subparsers.add_parser("migrate", help="Run database migrations")
-    migrate_subparsers = migrate_parser.add_subparsers(dest="migrate_command", help="Migration command")
+    # Create global dimensions applicable to all models
+    global_dimensions = [
+        {
+            "name": "Accuracy",
+            "description": "The factual accuracy of the response"
+        },
+        {
+            "name": "Helpfulness", 
+            "description": "How helpful and useful the response is"
+        },
+        {
+            "name": "Relevance",
+            "description": "How relevant the response is to the query"
+        },
+        {
+            "name": "Clarity",
+            "description": "How clear and understandable the response is"
+        },
+        {
+            "name": "Completeness",
+            "description": "How comprehensive and complete the response is"
+        }
+    ]
     
-    # Create migration command
-    create_parser = migrate_subparsers.add_parser("create", help="Create a new migration")
-    create_parser.add_argument("name", help="Name of the migration")
+    # System user ID for automatic creation
+    system_user_id = "00000000-0000-0000-0000-000000000000"
     
-    # Up migration command
-    up_parser = migrate_subparsers.add_parser("up", help="Run up migrations")
-    up_parser.add_argument("--steps", type=int, help="Number of migrations to apply")
-    
-    # Down migration command
-    down_parser = migrate_subparsers.add_parser("down", help="Run down migrations")
-    down_parser.add_argument("--steps", type=int, help="Number of migrations to revert")
-    
-    args = parser.parse_args()
-    
-    if args.command == "run" or args.command is None:
-        # Run the server
-        app.run(
-            host=getattr(args, "host", "0.0.0.0"),
-            port=getattr(args, "port", 5002),
-            debug=getattr(args, "debug", False)
-        )
-    elif args.command == "migrate":
-        # Import the migration script and run the appropriate command
-        from migrate import create_migration, run_migrations
+    # Add global dimensions
+    for dim in global_dimensions:
+        # Check if dimension already exists
+        existing = EvaluationDimension.query.filter_by(
+            model_id="all", 
+            name=dim["name"]
+        ).first()
         
-        if args.migrate_command == "create":
-            create_migration(args.name)
-        elif args.migrate_command == "up":
-            run_migrations("up", args.steps)
-        elif args.migrate_command == "down":
-            run_migrations("down", args.steps)
-        else:
-            migrate_parser.print_help()
+        if not existing:
+            dimension = EvaluationDimension(
+                model_id="all",
+                name=dim["name"],
+                description=dim["description"],
+                created_by=system_user_id,
+                is_active=True
+            )
+            db.session.add(dimension)
+            print(f"Added global dimension: {dim['name']}")
+    
+    try:
+        db.session.commit()
+        print("Initial data setup complete!")
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error setting up initial data: {str(e)}")
+
+@app.cli.command("create-admin")
+@click.argument("user_id")
+def create_admin(user_id):
+    """
+    Add a user to the admin list for testing.
+    
+    Args:
+        user_id: UUID of the user to mark as admin
+    """
+    # This is a simplified approach for testing/development
+    admin_users = os.environ.get('ADMIN_USERS', '')
+    
+    if user_id in admin_users:
+        print(f"User {user_id} is already an admin")
     else:
-        parser.print_help()
+        new_admins = f"{admin_users},{user_id}" if admin_users else user_id
+        print(f"Updated ADMIN_USERS environment variable")
+        print(f"Add this to your .env file or environment:")
+        print(f"ADMIN_USERS={new_admins}")
+
+@app.cli.command("create-validator")
+@click.argument("user_id")
+def create_validator(user_id):
+    """
+    Add a user to the validator list for testing.
+    
+    Args:
+        user_id: UUID of the user to mark as validator
+    """
+    # This is a simplified approach for testing/development
+    validator_users = os.environ.get('VALIDATOR_USERS', '')
+    
+    if user_id in validator_users:
+        print(f"User {user_id} is already a validator")
+    else:
+        new_validators = f"{validator_users},{user_id}" if validator_users else user_id
+        print(f"Updated VALIDATOR_USERS environment variable")
+        print(f"Add this to your .env file or environment:")
+        print(f"VALIDATOR_USERS={new_validators}")
 
 if __name__ == "__main__":
-    main()
+    app.run()

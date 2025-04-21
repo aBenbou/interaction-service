@@ -1,73 +1,82 @@
+# docker-compose.yml
 version: '3.8'
 
 services:
-  # Interaction Service
-  interaction_api:
+  interaction-service:
     build:
-      context: ./interaction-service
+      context: .
       dockerfile: Dockerfile
+    container_name: interaction_service
+    command: ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=8000", "--debug"]
     ports:
-      - "5002:5002"
-    depends_on:
-      - interaction_db
-      - auth_api
-      - profile_api
-      - model_api
+      - "8001:8000"
     env_file:
-      - ./interaction-service/.env
+      - .env
     environment:
-      - MODEL_SERVICE_URL=http://model_api:8000
-    volumes:
-      - ./interaction-service:/app
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/interaction_service
+      - SQLALCHEMY_DATABASE_URI=postgresql://postgres:postgres@db:5432/interaction_service
+      - FLASK_APP=run.py
+      - FLASK_ENV=development
+      - AUTH_SERVICE_URL=http://auth_api:5000
+      - USER_SERVICE_URL=http://profile_api:5001
+      - MODEL_SERVICE_URL=http://model-manager:8000
+      - SERVICE_API_KEY=${SERVICE_API_KEY:-your-service-api-key-change-in-production}
+      - AUTH_SERVICE_TOKEN=${AUTH_SERVICE_TOKEN:-your-auth-service-token-change-in-production}
+      - SECRET_KEY=development-secret-key
+      - JWT_SECRET_KEY=development-jwt-secret-key
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
-      - app_network
-    restart: unless-stopped
-    command: >
-      sh -c "
-        echo 'Waiting for database to be ready...' &&
-        until PGPASSWORD=postgres pg_isready -h interaction_db -p 5432 -U postgres; do
-          echo 'Database not ready yet - waiting...' &&
-          sleep 2;
-        done &&
-        echo 'Database ready, starting app...' &&
-        gunicorn --bind 0.0.0.0:5002 "run:app"
-      "
+      - interaction-network
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
-  interaction_db:
-    image: postgres:15
+  db:
+    image: postgres:16-alpine
+    container_name: interaction_db
     ports:
       - "5434:5432"
     environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      POSTGRES_DB: ${DB_NAME:-interaction_db}
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=interaction_service
     volumes:
-      - interaction_postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     networks:
-      - app_network
-    restart: unless-stopped
+      - interaction-network
+      - microservices-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # Model Service
-  model_api:
-    build:
-      context: ./model-service
-      dockerfile: Dockerfile
+  # Redis for caching or rate limiting (optional)
+  redis:
+    image: redis:alpine
+    container_name: interaction_redis
     ports:
-      - "8000:8000"
-    env_file:
-      - ./model-service/.env
-    environment:
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-      - HUGGING_FACE_HUB_KEY=${HUGGING_FACE_HUB_KEY}
-    volumes:
-      - ./model-service:/app
+      - "6380:6379"
     networks:
-      - app_network
-    restart: unless-stopped
+      - interaction-network
+      - microservices-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 networks:
-  app_network:
+  interaction-network:
     driver: bridge
+  microservices-network:
+    external: true
 
 volumes:
-  interaction_postgres_data:
+  postgres_data:

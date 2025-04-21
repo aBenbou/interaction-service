@@ -17,7 +17,6 @@ class Prompt(db.Model):
     sequence_number = db.Column(db.Integer, nullable=False)
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     context = db.Column(JSONB, default={}, nullable=False)
-    client_metadata = db.Column(JSONB, default={}, nullable=False)
     
     # Relationships
     interaction = db.relationship('Interaction', back_populates='prompts')
@@ -31,13 +30,13 @@ class Prompt(db.Model):
     )
     
     def to_dict(self):
-        """Convert prompt to dictionary."""
+        """Convert the prompt to a dictionary."""
         return {
             'id': str(self.id),
             'interaction_id': str(self.interaction_id),
             'content': self.content,
             'sequence_number': self.sequence_number,
             'submitted_at': self.submitted_at.isoformat(),
-            'context': self.context,
-            'client_metadata': self.client_metadata
+            'context': self.context
         }
+

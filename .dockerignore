@@ -1,0 +1,20 @@
+# Ignore Git repository files
+.git
+.gitignore
+
+# Ignore Docker files
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Ignore development files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+.env.*
+*.log
+
+# Keep entrypoint_improved.sh with LF line endings
+# .gitattributes 

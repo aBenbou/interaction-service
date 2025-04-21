@@ -1,12 +1,15 @@
-Flask==2.3.3
-Flask-SQLAlchemy==3.1.1
-Flask-Migrate==4.0.5
-Flask-JWT-Extended==4.5.3
-psycopg2-binary==2.9.9
-SQLAlchemy==2.0.23
-requests==2.31.0
-pydantic==2.5.1
-marshmallow==3.20.1
-python-dotenv==1.0.0
+# requirements.txt
+flask==2.3.3
+flask-sqlalchemy==3.1.1
+flask-migrate==4.0.5
+flask-jwt-extended==4.6.0
+flask-cors==4.0.0
 gunicorn==21.2.0
-redis==5.0.1
+psycopg2-binary==2.9.9
+requests==2.31.0
+python-dotenv==1.0.0
+sqlalchemy==2.0.23
+pydantic==2.6.3
+email-validator==2.1.0.post1
+prometheus-flask-exporter==0.22.4
+PyJWT==2.8.0
