@@ -1,5 +1,6 @@
 # app/services/feedback_service.py
 import logging
+import uuid
 from flask import current_app, g
 from app import db
 from app.models.response import Response
@@ -9,7 +10,7 @@ from app.models.feedback import Feedback
 from app.models.dimension import EvaluationDimension
 from app.models.dimension_rating import DimensionRating
 from app.utils.event_publisher import EventPublisher
-from app.utils.user_client import UserClient
+from app.utils.user_client import UserClient, has_role
 from app.services.validation_service import ValidationService
 
 logger = logging.getLogger(__name__)
@@ -67,19 +68,34 @@ class FeedbackService:
         db.session.add(feedback)
         db.session.flush()  # Get ID without committing
         
-        # Add dimension ratings
+        # Add dimension ratings - check if dimensions exist by name or ID
         for rating_data in dimension_ratings:
             dimension_id = rating_data.get('dimension_id')
             score = rating_data.get('score')
             justification = rating_data.get('justification')
             correct_response = rating_data.get('correct_response')
             
-            # Validate dimension exists
-            dimension = EvaluationDimension.query.get(dimension_id)
+            # First, check if dimension_id is a UUID or a name
+            dimension = None
+            try:
+                # Try to parse as UUID - if successful, look up by ID
+                uuid_obj = uuid.UUID(str(dimension_id))
+                dimension = EvaluationDimension.query.get(uuid_obj)
+            except (ValueError, TypeError):
+                # Not a valid UUID, try to find by name for this model
+                # Look for dimension with that name for this model or for 'all' models
+                dimension = EvaluationDimension.query.filter(
+                    db.or_(
+                        EvaluationDimension.model_id == interaction.model_id,
+                        EvaluationDimension.model_id == 'all'
+                    ),
+                    EvaluationDimension.name.ilike(dimension_id)
+                ).first()
+                
             if not dimension:
                 db.session.rollback()
-                return {"error": f"Dimension {dimension_id} not found"}
-                
+                return {"error": f"Dimension {dimension_id} not found. Please use a valid dimension ID or name"}
+                    
             # Validate dimension is applicable to this model
             if dimension.model_id != interaction.model_id and dimension.model_id != 'all':
                 db.session.rollback()
@@ -97,7 +113,7 @@ class FeedbackService:
             
             rating = DimensionRating(
                 feedback_id=feedback.id,
-                dimension_id=dimension_id,
+                dimension_id=dimension.id,  # Use the actual UUID from the dimension object
                 score=score_int,
                 justification=justification,
                 correct_response=correct_response
@@ -122,11 +138,12 @@ class FeedbackService:
         
         # If user is a validator, automatically validate the feedback
         try:
-            if UserClient.has_role(user_id, 'validator'):
+            if has_role(user_id, 'validator'):
                 ValidationService.auto_validate_validator_feedback(feedback.id, user_id)
                 
             # Update user contribution points
-            UserClient.update_contribution_points(user_id, 'feedback_submitted')
+            user_client = UserClient()
+            user_client.update_contribution_points(user_id, 'feedback_submitted')
         except Exception as e:
             # Don't fail the feedback creation if the user service calls fail
             logger.error(f"Error in post-feedback processing: {str(e)}")
@@ -155,7 +172,8 @@ class FeedbackService:
         # Enrich with user information if requested
         if include_user_info and feedback:
             try:
-                user_profile = UserClient.get_profile(feedback.user_id)
+                user_client = UserClient()
+                user_profile = user_client.get_profile(feedback.user_id)
                 if user_profile:
                     # Store profile info in g to access in the to_dict method
                     g.user_profiles = getattr(g, 'user_profiles', {})
@@ -195,7 +213,8 @@ class FeedbackService:
         if include_user_info and paginated.items:
             user_ids = [str(item.user_id) for item in paginated.items]
             try:
-                user_profiles = UserClient.get_bulk_profiles(user_ids)
+                user_client = UserClient()
+                user_profiles = user_client.get_bulk_profiles(user_ids)
                 if user_profiles:
                     g.user_profiles = getattr(g, 'user_profiles', {})
                     for user_id, profile in user_profiles.items():
@@ -235,7 +254,8 @@ class FeedbackService:
         # Enrich with user information if requested
         if include_user_info and paginated.items:
             try:
-                user_profile = UserClient.get_profile(user_id)
+                user_client = UserClient()
+                user_profile = user_client.get_profile(user_id)
                 if user_profile:
                     g.user_profiles = getattr(g, 'user_profiles', {})
                     g.user_profiles[str(user_id)] = user_profile
@@ -267,7 +287,8 @@ class FeedbackService:
         if include_user_info and paginated.items:
             user_ids = [str(item.user_id) for item in paginated.items]
             try:
-                user_profiles = UserClient.get_bulk_profiles(user_ids)
+                user_client = UserClient()
+                user_profiles = user_client.get_bulk_profiles(user_ids)
                 if user_profiles:
                     g.user_profiles = getattr(g, 'user_profiles', {})
                     for user_id, profile in user_profiles.items():
@@ -297,7 +318,8 @@ class FeedbackService:
             
         try:
             # Get connection information between requesting user and feedback author
-            connections = UserClient.get_user_connections(requesting_user_id)
+            user_client = UserClient()
+            connections = user_client.get_user_connections(requesting_user_id)
             
             # Store connection information in g to access in the to_dict method
             g.user_connections = getattr(g, 'user_connections', {})
@@ -313,5 +335,5 @@ class FeedbackService:
                     break
         except Exception as e:
             logger.error(f"Error getting user connections: {str(e)}")
-        
+            
         return feedback

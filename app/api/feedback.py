@@ -5,8 +5,8 @@ from flask_jwt_extended import get_jwt_identity
 from app.services.feedback_service import FeedbackService
 from app.services.dimension_service import DimensionService
 from app.utils.pagination import get_pagination_params
-from app.utils.auth_client import AuthClient
-from app.utils.user_client import UserClient
+from app.utils.auth_client import AuthClient, is_admin, has_permission
+from app.utils.user_client import UserClient, has_role
 from app.utils.decorators import jwt_required_with_permissions
 
 logger = logging.getLogger(__name__)
@@ -53,10 +53,10 @@ def get_feedback(feedback_id):
     
     # Check authorization
     is_owner = feedback.user_id == user_id
-    is_validator = UserClient.has_role(user_id, 'validator')
-    is_admin = AuthClient.has_permission(user_id, 'admin')
+    is_validator = has_role(user_id, 'validator')
+    is_admin_user = has_permission(user_id, 'admin')
     
-    if not (is_owner or is_validator or is_admin):
+    if not (is_owner or is_validator or is_admin_user):
         return jsonify({'error': 'Not authorized to view this feedback'}), 403
     
     return jsonify(feedback.to_dict()), 200
@@ -92,7 +92,7 @@ def get_pending_feedback():
     user_id = str(g.current_user_id)
     
     # Check if user is a validator
-    if not UserClient.has_role(user_id, 'validator'):
+    if not has_role(user_id, 'validator'):
         return jsonify({'error': 'Not authorized to view pending feedback'}), 403
     
     # Parse pagination parameters

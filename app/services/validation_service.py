@@ -5,8 +5,8 @@ from app import db
 from app.models.feedback import Feedback
 from app.models.validation import ValidationRecord
 from app.utils.event_publisher import EventPublisher
-from app.utils.auth_client import AuthClient
-from app.utils.user_client import UserClient
+from app.utils.auth_client import AuthClient, has_permission
+from app.utils.user_client import UserClient, has_role
 from app.services.dataset_service import DatasetService
 
 logger = logging.getLogger(__name__)
@@ -32,8 +32,8 @@ class ValidationService:
         validator_id = str(validator_id) if validator_id else None
         
         # Check if user has validator expertise
-        has_validator_role = UserClient.has_role(validator_id, 'validator')
-        is_admin_user = AuthClient.has_permission(validator_id, 'admin')
+        has_validator_role = has_role(validator_id, 'validator')
+        is_admin_user = has_permission(validator_id, 'admin')
         
         if not (has_validator_role or is_admin_user):
             return {"error": "Not authorized to validate feedback. Validator expertise required."}
@@ -48,7 +48,7 @@ class ValidationService:
             return {"error": "Feedback has already been validated"}
         
         # Ensure validator isn't validating their own feedback (unless they're an admin)
-        if str(feedback.user_id) == str(validator_id) and not AuthClient.has_permission(validator_id, 'admin'):
+        if str(feedback.user_id) == str(validator_id) and not has_permission(validator_id, 'admin'):
             return {"error": "Validators cannot validate their own feedback"}
         
         # Create validation record
@@ -87,14 +87,16 @@ class ValidationService:
                 # Update user progression
                 # This would normally be handled by a separate service listening to events
                 # but for simplicity we'll call it directly
-                UserClient.update_contribution_points(feedback.user_id, 'feedback_validated')
+                user_client = UserClient()
+                user_client.update_contribution_points(feedback.user_id, 'feedback_validated')
             except Exception as e:
                 # Don't fail the validation if dataset creation fails
                 logger.error(f"Error in post-validation processing: {str(e)}")
         
         # Update validator contribution points
         try:
-            UserClient.update_contribution_points(validator_id, 'validation_performed')
+            user_client = UserClient()
+            user_client.update_contribution_points(validator_id, 'validation_performed')
         except Exception as e:
             # Don't fail the validation if user service call fails
             logger.error(f"Error updating validator points: {str(e)}")
