@@ -1,6 +1,6 @@
 # app/api/feedback.py
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import get_jwt_identity
 from app.services.feedback_service import FeedbackService
 from app.services.dimension_service import DimensionService
@@ -17,7 +17,7 @@ feedback_bp = Blueprint('feedback', __name__, url_prefix='/feedback')
 @jwt_required_with_permissions()
 def create_feedback():
     """Submit feedback for a model response."""
-    user_id = str(get_jwt_identity())
+    user_id = str(g.current_user_id)
     data = request.get_json()
     
     # Validate required fields
@@ -45,7 +45,7 @@ def create_feedback():
 @jwt_required_with_permissions()
 def get_feedback(feedback_id):
     """Get details of a specific feedback entry."""
-    user_id = str(get_jwt_identity())
+    user_id = str(g.current_user_id)
     
     feedback = FeedbackService.get_feedback(feedback_id)
     if not feedback:
@@ -65,7 +65,7 @@ def get_feedback(feedback_id):
 @jwt_required_with_permissions()
 def get_user_feedback():
     """Get feedback submitted by the current user."""
-    user_id = str(get_jwt_identity())
+    user_id = str(g.current_user_id)
     
     # Parse pagination and filter parameters
     page, per_page = get_pagination_params(request)
@@ -89,7 +89,7 @@ def get_user_feedback():
 @jwt_required_with_permissions(['validator:read'])
 def get_pending_feedback():
     """Get pending feedback awaiting validation."""
-    user_id = str(get_jwt_identity())
+    user_id = str(g.current_user_id)
     
     # Check if user is a validator
     if not UserClient.has_role(user_id, 'validator'):
@@ -116,7 +116,7 @@ def get_pending_feedback():
 @jwt_required_with_permissions()
 def get_response_feedback(response_id):
     """Get all feedback for a specific response."""
-    user_id = str(get_jwt_identity())
+    user_id = str(g.current_user_id)
     
     # Parse pagination parameters
     page, per_page = get_pagination_params(request)

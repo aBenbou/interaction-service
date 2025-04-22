@@ -1,6 +1,6 @@
 # app/api/dimensions.py
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import get_jwt_identity
 from app.services.dimension_service import DimensionService
 from app.utils.auth_client import AuthClient
@@ -14,7 +14,7 @@ dimensions_bp = Blueprint('dimensions', __name__, url_prefix='/dimensions')
 @jwt_required_with_permissions(['admin'])
 def create_dimension():
     """Create a new evaluation dimension."""
-    user_id = get_jwt_identity()
+    user_id = g.current_user_id
     
     # Check if user has admin permission
     if not AuthClient.has_permission(user_id, 'admin'):
@@ -56,7 +56,7 @@ def get_model_dimensions(model_id):
 @jwt_required_with_permissions(['admin'])
 def update_dimension(dimension_id):
     """Update an evaluation dimension."""
-    user_id = get_jwt_identity()
+    user_id = g.current_user_id
     
     # Check if user has admin permission
     if not AuthClient.has_permission(user_id, 'admin'):

@@ -1,6 +1,6 @@
 # app/api/validation.py
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import get_jwt_identity
 from app.services.validation_service import ValidationService
 from app.utils.user_client import UserClient
@@ -14,7 +14,7 @@ validation_bp = Blueprint('validation', __name__, url_prefix='/validation')
 @jwt_required_with_permissions(['validator:write'])
 def validate_feedback(feedback_id):
     """Validate a feedback submission."""
-    validator_id = str(get_jwt_identity())
+    validator_id = str(g.current_user_id)
     
     # Check if user is a validator
     if not UserClient.has_role(validator_id, 'validator'):
@@ -42,7 +42,7 @@ def validate_feedback(feedback_id):
 @jwt_required_with_permissions(['validator:read'])
 def get_validation_stats():
     """Get validation statistics for current user."""
-    validator_id = str(get_jwt_identity())
+    validator_id = str(g.current_user_id)
     
     # Check if user is a validator
     if not UserClient.has_role(validator_id, 'validator'):

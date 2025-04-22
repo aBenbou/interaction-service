@@ -91,6 +91,21 @@ class BaseClient:
         logger.error(error_message)
         
         if isinstance(e, requests.exceptions.HTTPError):
+            # Add enhanced JSON error response handling
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_data = e.response.json()
+                    if 'detail' in error_data:
+                        error_message = error_data['detail']
+                    elif 'error' in error_data:
+                        error_message = error_data['error']
+                    else:
+                        error_message = str(e)
+                    return ClientResponse(False, error=error_message, status_code=e.response.status_code)
+                except ValueError:
+                    # Response wasn't JSON
+                    return ClientResponse(False, error=str(e), status_code=e.response.status_code if hasattr(e, 'response') else None)
+            
             return ClientResponse(False, error=error_message, status_code=e.response.status_code)
         elif isinstance(e, requests.exceptions.ConnectionError):
             return ClientResponse(False, error=f"Connection error to {self.service_name}", status_code=503)

@@ -1,6 +1,6 @@
 # app/api/dataset.py
 import logging
-from flask import Blueprint, request, jsonify, make_response
+from flask import Blueprint, request, jsonify, make_response, g
 from flask_jwt_extended import get_jwt_identity
 from app.services.dataset_service import DatasetService
 from app.utils.pagination import get_pagination_params
@@ -15,7 +15,7 @@ dataset_bp = Blueprint('dataset', __name__, url_prefix='/dataset')
 @jwt_required_with_permissions(['admin'])
 def get_model_dataset(model_id):
     """Get dataset entries for a model."""
-    user_id = get_jwt_identity()
+    user_id = g.current_user_id
     
     # Check if user has admin permission
     if not AuthClient.has_permission(user_id, 'admin'):
@@ -37,7 +37,7 @@ def get_model_dataset(model_id):
 @jwt_required_with_permissions(['admin'])
 def export_dataset(model_id):
     """Export dataset for a model."""
-    user_id = get_jwt_identity()
+    user_id = g.current_user_id
     
     # Check if user has admin permission
     if not AuthClient.has_permission(user_id, 'admin'):
@@ -66,7 +66,7 @@ def export_dataset(model_id):
 @jwt_required_with_permissions(['admin'])
 def get_dataset_entry(entry_id):
     """Get a specific dataset entry."""
-    user_id = get_jwt_identity()
+    user_id = g.current_user_id
     
     # Check if user has admin permission
     if not AuthClient.has_permission(user_id, 'admin'):
@@ -82,7 +82,7 @@ def get_dataset_entry(entry_id):
 @jwt_required_with_permissions(['admin'])
 def get_dataset_stats():
     """Get statistics about the dataset."""
-    user_id = get_jwt_identity()
+    user_id = g.current_user_id
     
     # Check if user has admin permission
     if not AuthClient.has_permission(user_id, 'admin'):

@@ -4,6 +4,7 @@ from urllib.parse import urljoin
 from app.utils.client_base import BaseClient, ClientResponse
 from typing import Dict, List, Any, Optional, Union
 import requests
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,17 @@ class ModelClient(BaseClient):
         # Extract endpoints from response for backward compatibility
         if response.success and response.data:
             endpoints = response.data.get('endpoints', [])
-            return ClientResponse(True, data=endpoints)
+            
+            # Standardize field names to snake_case for easier access
+            standardized_endpoints = []
+            for endpoint in endpoints:
+                standardized_endpoints.append({
+                    'endpoint_name': endpoint.get('endpointName', ''),
+                    'status': endpoint.get('status', ''),
+                    'instance_type': endpoint.get('instanceType', ''),
+                    'creation_time': endpoint.get('creationTime', '')
+                })
+            return ClientResponse(True, data=standardized_endpoints)
         
         return response
     
@@ -53,76 +64,91 @@ class ModelClient(BaseClient):
         return self.get(f'/endpoint/{endpoint_name}')
     
     def query_endpoint(self, endpoint_name: str, query_text: str, 
-                      context: Optional[Dict] = None, 
-                      parameters: Optional[Dict] = None) -> ClientResponse:
+                      context: Optional[Union[Dict, str]] = None, 
+                      parameters: Optional[Dict] = None):
         """
         Query a model endpoint.
         
         Args:
             endpoint_name: Name of the endpoint
             query_text: Text query to send to the model
-            context: Optional context for models that require it
+            context: Optional context for models that require it (dict or string)
             parameters: Optional parameters for the model
             
         Returns:
-            ClientResponse with model response or error
+            Dictionary with model response data or error information
         """
         try:
             payload = {"query": query_text}
             
             if context is not None:
+                # Convert dictionary context to a JSON string
+                if isinstance(context, dict):
+                    context = json.dumps(context)
                 payload["context"] = context
                 
             if parameters is not None:
                 payload["parameters"] = parameters
             
-            url = self._build_url(f'/endpoint/{endpoint_name}/query')
-            response = self._session.post(
-                url, 
-                json=payload,
-                timeout=self.timeout
-            )
+            # Use the post() method from BaseClient
+            response = self.post(f'/endpoint/{endpoint_name}/query', json=payload)
             
-            response.raise_for_status()
-            return ClientResponse(True, data=response.json())
+            # Extract the data part of the response
+            if response.success:
+                return response.data  # Return just the data portion
+            else:
+                # Return error dictionary that can be processed by the calling code
+                return {"error": response.error or "Unknown error"}
         except requests.exceptions.ConnectionError:
             logger.error(f"Connection error to Model Service when querying {endpoint_name}")
-            return ClientResponse(
-                False,
-                error="Model service unavailable",
-                data={"content": "I'm sorry, the model service is currently unavailable. Please try again later."}
-            )
+            return {"error": "Model service unavailable", 
+                   "content": "I'm sorry, the model service is currently unavailable. Please try again later."}
         except requests.exceptions.RequestException as e:
             logger.error(f"Error querying endpoint {endpoint_name}: {str(e)}")
-            return ClientResponse(False, error=str(e))
+            return {"error": str(e)}
     
-    def chat_completion(self, model_id: str, messages: List[Dict]) -> ClientResponse:
+    def chat_completion(self, model_id: str, messages: List[Dict], endpoint_name: Optional[str] = None) -> Dict:
         """
         Call the OpenAI-compatible chat completion endpoint.
         
         Args:
             model_id: ID of the model to use
             messages: List of message objects (role, content)
+            endpoint_name: Optional explicit endpoint name to use
             
         Returns:
-            ClientResponse with generated completion or error
+            Dictionary with generated completion or error information
         """
-        payload = {
-            "model": model_id,
-            "messages": messages
-        }
-        
-        response = self.post('/chat/completions', json=payload)
-        
-        # Special handling for 404 not deployed error for backward compatibility
-        if not response.success and response.status_code == 404:
-            return ClientResponse(
-                False, 
-                error="Model not deployed", 
-                data={"details": "The specified model is not currently deployed"}
-            )
-        
-        return response
+        try:
+            payload = {
+                "model": model_id,
+                "messages": messages
+            }
+            
+            # Add endpoint name to the request if provided
+            if endpoint_name:
+                payload["endpoint_name"] = endpoint_name
+            
+            # Use the post() method from BaseClient
+            response = self.post('/chat/completions', json=payload)
+            
+            # Extract the data part of the response
+            if response.success:
+                return response.data  # Return just the data portion
+            else:
+                # Special handling for 404 not deployed error for backward compatibility
+                if response.status_code == 404:
+                    return {"error": "Model not deployed", "details": "The specified model is not currently deployed"}
+                
+                # Return error dictionary that can be processed by the calling code
+                return {"error": response.error or "Unknown error"}
+        except requests.exceptions.ConnectionError:
+            logger.error(f"Connection error to Model Service when calling chat completion for {model_id}")
+            return {"error": "Model service unavailable", 
+                   "content": "I'm sorry, the model service is currently unavailable. Please try again later."}
+        except Exception as e:
+            logger.error(f"Error in chat completion: {str(e)}")
+            return {"error": f"Failed to get chat completion: {str(e)}"}
     
     def get_model_dimensions(self, model_id: str) -> ClientResponse:
         """
@@ -176,33 +202,19 @@ class ModelClient(BaseClient):
             Boolean indicating if the model is valid and deployed
         """
         try:
-            # Get all endpoints
-            endpoints_response = self.list_endpoints()
-            if not endpoints_response.success:
+            # Call the dedicated validation endpoint
+            params = {}
+            if model_version:
+                params['model_version'] = model_version
+                
+            response = self.get(f'/models/validate/{model_id}', params=params)
+            
+            if not response.success:
+                logger.warning(f"Failed to validate model {model_id}: {response.error}")
                 return False
             
-            endpoints = endpoints_response.data
-            if not endpoints:
-                return False
-            
-            # Check if any endpoint is running this model
-            for endpoint in endpoints:
-                endpoint_response = self.get_endpoint(endpoint.get('endpointName'))
-                if not endpoint_response.success:
-                    continue
-                
-                config = endpoint_response.data
-                if not config or 'models' not in config:
-                    continue
-                
-                for model in config.get('models', []):
-                    if model.get('id') == model_id:
-                        # If version is specified, check it matches
-                        if model_version and model.get('version') != model_version:
-                            continue
-                        return True
-            
-            return False
+            # Check if the model is valid according to the response
+            return response.data.get('valid', False)
         except Exception as e:
             logger.error(f"Error validating model {model_id}: {str(e)}")
             return False
