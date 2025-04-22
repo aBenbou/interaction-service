@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify, make_response, g
 from flask_jwt_extended import get_jwt_identity
 from app.services.dataset_service import DatasetService
 from app.utils.pagination import get_pagination_params
-from app.utils.auth_client import AuthClient
+from app.utils.auth_client import AuthClient, has_permission
 from app.utils.decorators import jwt_required_with_permissions
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ def get_model_dataset(model_id):
     user_id = g.current_user_id
     
     # Check if user has admin permission
-    if not AuthClient.has_permission(user_id, 'admin'):
+    if not has_permission(user_id, 'admin'):
         return jsonify({'error': 'Not authorized to view dataset entries'}), 403
     
     # Parse pagination parameters
@@ -40,7 +40,7 @@ def export_dataset(model_id):
     user_id = g.current_user_id
     
     # Check if user has admin permission
-    if not AuthClient.has_permission(user_id, 'admin'):
+    if not has_permission(user_id, 'admin'):
         return jsonify({'error': 'Not authorized to export dataset'}), 403
     
     format = request.args.get('format', 'json')
@@ -69,7 +69,7 @@ def get_dataset_entry(entry_id):
     user_id = g.current_user_id
     
     # Check if user has admin permission
-    if not AuthClient.has_permission(user_id, 'admin'):
+    if not has_permission(user_id, 'admin'):
         return jsonify({'error': 'Not authorized to view dataset entries'}), 403
     
     entry = DatasetService.get_entry(entry_id)
@@ -85,7 +85,7 @@ def get_dataset_stats():
     user_id = g.current_user_id
     
     # Check if user has admin permission
-    if not AuthClient.has_permission(user_id, 'admin'):
+    if not has_permission(user_id, 'admin'):
         return jsonify({'error': 'Not authorized to view dataset statistics'}), 403
     
     stats = DatasetService.get_stats()

@@ -3,7 +3,7 @@ import logging
 from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import get_jwt_identity
 from app.services.dimension_service import DimensionService
-from app.utils.auth_client import AuthClient
+from app.utils.auth_client import AuthClient, has_permission
 from app.utils.decorators import jwt_required_with_permissions
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ def create_dimension():
     user_id = g.current_user_id
     
     # Check if user has admin permission
-    if not AuthClient.has_permission(user_id, 'admin'):
+    if not has_permission(user_id, 'admin'):
         return jsonify({'error': 'Not authorized to create dimensions'}), 403
     
     data = request.get_json()
@@ -59,7 +59,7 @@ def update_dimension(dimension_id):
     user_id = g.current_user_id
     
     # Check if user has admin permission
-    if not AuthClient.has_permission(user_id, 'admin'):
+    if not has_permission(user_id, 'admin'):
         return jsonify({'error': 'Not authorized to update dimensions'}), 403
     
     data = request.get_json()

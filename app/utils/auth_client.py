@@ -196,3 +196,17 @@ def is_owner_or_admin(user_id, profile_id):
     """
     client = AuthClient()
     return client.is_owner_or_admin(user_id, profile_id)
+
+def has_permission(user_id, permission):
+    """
+    Check if a user has a specific permission.
+    
+    Args:
+        user_id: UUID of the user
+        permission: Permission to check for
+        
+    Returns:
+        Boolean indicating if user has the permission
+    """
+    client = AuthClient()
+    return client.has_permission(user_id, permission)

@@ -3,7 +3,7 @@ import logging
 from flask import Blueprint, request, jsonify, g
 from flask_jwt_extended import get_jwt_identity
 from app.services.validation_service import ValidationService
-from app.utils.user_client import UserClient
+from app.utils.user_client import UserClient, has_role
 from app.utils.decorators import jwt_required_with_permissions
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ def validate_feedback(feedback_id):
     validator_id = str(g.current_user_id)
     
     # Check if user is a validator
-    if not UserClient.has_role(validator_id, 'validator'):
+    if not has_role(validator_id, 'validator'):
         return jsonify({'error': 'Not authorized to validate feedback'}), 403
     
     data = request.get_json()
@@ -45,7 +45,7 @@ def get_validation_stats():
     validator_id = str(g.current_user_id)
     
     # Check if user is a validator
-    if not UserClient.has_role(validator_id, 'validator'):
+    if not has_role(validator_id, 'validator'):
         return jsonify({'error': 'Not authorized to view validation stats'}), 403
     
     stats = ValidationService.get_validator_stats(validator_id)
