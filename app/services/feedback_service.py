@@ -12,12 +12,255 @@ from app.models.dimension_rating import DimensionRating
 from app.utils.event_publisher import EventPublisher
 from app.utils.user_client import UserClient, has_role
 from app.services.validation_service import ValidationService
+from typing import Dict, Any, Optional, List
+from uuid import UUID
+from datetime import datetime
+from app.utils.user_client import user_client
 
 logger = logging.getLogger(__name__)
 
 class FeedbackService:
-    """Business logic for feedback collection."""
+    """Service for managing feedback on model responses."""
     
+    @staticmethod
+    def submit_feedback(
+        interaction_id: UUID,
+        prompt_id: UUID,
+        user_id: str,
+        category: str,
+        rating: Optional[int] = None,
+        binary_evaluation: Optional[bool] = None,
+        ranking: Optional[int] = None,
+        justification: Optional[str] = None,
+        metadata: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """
+        Submit feedback for a model response.
+        
+        Args:
+            interaction_id: ID of the interaction
+            prompt_id: ID of the prompt
+            user_id: ID of the user submitting feedback
+            category: Feedback category (e.g., 'accuracy', 'relevance')
+            rating: Optional 1-5 rating
+            binary_evaluation: Optional yes/no evaluation
+            ranking: Optional ranking for multiple responses
+            justification: Optional explanation
+            metadata: Optional additional metadata
+            
+        Returns:
+            Dictionary with feedback data or error
+        """
+      
+        interaction = Interaction.query.get(interaction_id)
+        prompt = Prompt.query.get(prompt_id)
+        
+        if not interaction or not prompt:
+            return {
+                'success': False,
+                'message': 'Interaction or prompt not found'
+            }
+        
+    
+        if not any([rating is not None, binary_evaluation is not None, ranking is not None]):
+            return {
+                'success': False,
+                'message': 'Must provide at least one type of evaluation'
+            }
+        
+        if rating is not None and not (1 <= rating <= 5):
+            return {
+                'success': False,
+                'message': 'Rating must be between 1 and 5'
+            }
+        
+        feedback = Feedback(
+            interaction_id=interaction_id,
+            prompt_id=prompt_id,
+            user_id=user_id,
+            model_id=interaction.model_id,
+            model_version=interaction.model_version,
+            category=category,
+            rating=rating,
+            binary_evaluation=binary_evaluation,
+            ranking=ranking,
+            justification=justification,
+            metadata=metadata or {}
+        )
+        
+        db.session.add(feedback)
+        db.session.commit()
+        
+       
+        EventPublisher.publish('feedback.submitted', {
+            'feedback_id': str(feedback.id),
+            'interaction_id': str(interaction_id),
+            'user_id': user_id,
+            'category': category
+        })
+        
+        return {
+            'success': True,
+            'message': 'Feedback submitted successfully',
+            'feedback': feedback.to_dict()
+        }
+    
+    @staticmethod
+    def validate_feedback(
+        feedback_id: UUID,
+        validator_id: str,
+        status: str,
+        notes: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Validate submitted feedback.
+        
+        Args:
+            feedback_id: ID of the feedback to validate
+            validator_id: ID of the validator
+            status: New status (ACCEPTED or REJECTED)
+            notes: Optional validation notes
+            
+        Returns:
+            Dictionary with updated feedback data or error
+        """
+        feedback = Feedback.query.get(feedback_id)
+        if not feedback:
+            return {
+                'success': False,
+                'message': 'Feedback not found'
+            }
+        
+        if status not in ('ACCEPTED', 'REJECTED'):
+            return {
+                'success': False,
+                'message': 'Invalid status. Use ACCEPTED or REJECTED'
+            }
+        
+   
+        feedback.validation_status = status
+        feedback.validator_id = validator_id
+        feedback.validation_notes = notes
+        feedback.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+   
+        EventPublisher.publish('feedback.validated', {
+            'feedback_id': str(feedback.id),
+            'validator_id': validator_id,
+            'status': status
+        })
+        
+        return {
+            'success': True,
+            'message': 'Feedback validated successfully',
+            'feedback': feedback.to_dict()
+        }
+    
+    @staticmethod
+    def get_feedback(
+        feedback_id: UUID,
+        include_private: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Get feedback by ID.
+        
+        Args:
+            feedback_id: ID of the feedback
+            include_private: Whether to include private fields
+            
+        Returns:
+            Dictionary with feedback data or error
+        """
+        feedback = Feedback.query.get(feedback_id)
+        if not feedback:
+            return {
+                'success': False,
+                'message': 'Feedback not found'
+            }
+        
+        return {
+            'success': True,
+            'feedback': feedback.to_dict()
+        }
+    
+    @staticmethod
+    def get_user_feedback(
+        user_id: str,
+        status: Optional[str] = None,
+        category: Optional[str] = None,
+        page: int = 1,
+        per_page: int = 20
+    ) -> Dict[str, Any]:
+        """
+        Get feedback submitted by a user.
+        
+        Args:
+            user_id: ID of the user
+            status: Optional filter by validation status
+            category: Optional filter by category
+            page: Page number
+            per_page: Items per page
+            
+        Returns:
+            Dictionary with feedback list and pagination info
+        """
+        query = Feedback.query.filter_by(user_id=user_id)
+        
+        if status:
+            query = query.filter_by(validation_status=status)
+        if category:
+            query = query.filter_by(category=category)
+        
+      
+        query = query.order_by(Feedback.created_at.desc())
+        
+ 
+        paginated = query.paginate(page=page, per_page=per_page)
+        
+        return {
+            'success': True,
+            'feedback': [f.to_dict() for f in paginated.items],
+            'pagination': {
+                'total': paginated.total,
+                'pages': paginated.pages,
+                'page': page,
+                'per_page': per_page
+            }
+        }
+    
+    @staticmethod
+    def get_pending_validation(
+        page: int = 1,
+        per_page: int = 20
+    ) -> Dict[str, Any]:
+        """
+        Get feedback pending validation.
+        
+        Args:
+            page: Page number
+            per_page: Items per page
+            
+        Returns:
+            Dictionary with feedback list and pagination info
+        """
+        query = Feedback.query.filter_by(validation_status='PENDING')
+        query = query.order_by(Feedback.created_at.asc())
+        
+        paginated = query.paginate(page=page, per_page=per_page)
+        
+        return {
+            'success': True,
+            'feedback': [f.to_dict() for f in paginated.items],
+            'pagination': {
+                'total': paginated.total,
+                'pages': paginated.pages,
+                'page': page,
+                'per_page': per_page
+            }
+        }
+
     @staticmethod
     def create_feedback(response_id, user_id, dimension_ratings, overall_comment=None):
         """
@@ -32,15 +275,14 @@ class FeedbackService:
         Returns:
             Created feedback or error dictionary
         """
-        # Ensure user_id is a string
         user_id = str(user_id) if user_id else None
         
-        # Check if response exists
+   
         response = Response.query.get(response_id)
         if not response:
             return {"error": "Response not found"}
         
-        # Get prompt and interaction
+      
         prompt = Prompt.query.get(response.prompt_id)
         if not prompt:
             return {"error": "Associated prompt not found"}
@@ -48,8 +290,7 @@ class FeedbackService:
         interaction = Interaction.query.get(prompt.interaction_id)
         if not interaction:
             return {"error": "Associated interaction not found"}
-        
-        # Check if user already provided feedback for this response
+  
         existing = Feedback.query.filter(
             Feedback.response_id == response_id,
             Feedback.user_id == user_id
@@ -58,7 +299,7 @@ class FeedbackService:
         if existing:
             return {"error": "You have already provided feedback for this response"}
         
-        # Create feedback
+    
         feedback = Feedback(
             response_id=response_id,
             user_id=user_id,
@@ -66,24 +307,23 @@ class FeedbackService:
         )
         
         db.session.add(feedback)
-        db.session.flush()  # Get ID without committing
+        db.session.flush()  
         
-        # Add dimension ratings - check if dimensions exist by name or ID
+
         for rating_data in dimension_ratings:
             dimension_id = rating_data.get('dimension_id')
             score = rating_data.get('score')
             justification = rating_data.get('justification')
             correct_response = rating_data.get('correct_response')
             
-            # First, check if dimension_id is a UUID or a name
+        
             dimension = None
             try:
-                # Try to parse as UUID - if successful, look up by ID
+             
                 uuid_obj = uuid.UUID(str(dimension_id))
                 dimension = EvaluationDimension.query.get(uuid_obj)
             except (ValueError, TypeError):
-                # Not a valid UUID, try to find by name for this model
-                # Look for dimension with that name for this model or for 'all' models
+              
                 dimension = EvaluationDimension.query.filter(
                     db.or_(
                         EvaluationDimension.model_id == interaction.model_id,
@@ -96,12 +336,11 @@ class FeedbackService:
                 db.session.rollback()
                 return {"error": f"Dimension {dimension_id} not found. Please use a valid dimension ID or name"}
                     
-            # Validate dimension is applicable to this model
+         
             if dimension.model_id != interaction.model_id and dimension.model_id != 'all':
                 db.session.rollback()
                 return {"error": f"Dimension {dimension.name} is not applicable to this model"}
-            
-            # Validate score is in range 1-5
+           
             try:
                 score_int = int(score)
                 if not 1 <= score_int <= 5:
@@ -113,7 +352,7 @@ class FeedbackService:
             
             rating = DimensionRating(
                 feedback_id=feedback.id,
-                dimension_id=dimension.id,  # Use the actual UUID from the dimension object
+                dimension_id=dimension.id,  
                 score=score_int,
                 justification=justification,
                 correct_response=correct_response
@@ -127,8 +366,7 @@ class FeedbackService:
             db.session.rollback()
             logger.error(f"Error saving feedback: {str(e)}")
             return {"error": f"Error saving feedback: {str(e)}"}
-        
-        # Publish event
+     
         EventPublisher.publish('feedback.submitted', {
             'feedback_id': str(feedback.id),
             'user_id': user_id,
@@ -136,16 +374,14 @@ class FeedbackService:
             'model_id': interaction.model_id
         })
         
-        # If user is a validator, automatically validate the feedback
+     
         try:
             if has_role(user_id, 'validator'):
                 ValidationService.auto_validate_validator_feedback(feedback.id, user_id)
                 
-            # Update user contribution points
             user_client = UserClient()
             user_client.update_contribution_points(user_id, 'feedback_submitted')
         except Exception as e:
-            # Don't fail the feedback creation if the user service calls fail
             logger.error(f"Error in post-feedback processing: {str(e)}")
         
         return feedback
@@ -168,14 +404,13 @@ class FeedbackService:
         
         if not feedback:
             return None
-            
-        # Enrich with user information if requested
+ 
         if include_user_info and feedback:
             try:
                 user_client = UserClient()
                 user_profile = user_client.get_profile(feedback.user_id)
                 if user_profile:
-                    # Store profile info in g to access in the to_dict method
+                 
                     g.user_profiles = getattr(g, 'user_profiles', {})
                     g.user_profiles[str(feedback.user_id)] = user_profile
             except Exception as e:
@@ -200,16 +435,14 @@ class FeedbackService:
         query = Feedback.query.filter(Feedback.status == 'PENDING')
         
         if model_id:
-            # Join through relationships to filter by model ID
             query = query.join(Response).join(Prompt).join(Interaction).filter(
                 Interaction.model_id == model_id
             )
             
-        query = query.order_by(Feedback.submitted_at.asc())  # Oldest first
+        query = query.order_by(Feedback.submitted_at.asc())  
         
         paginated = query.paginate(page=page, per_page=per_page)
         
-        # Enrich with user information if requested
         if include_user_info and paginated.items:
             user_ids = [str(item.user_id) for item in paginated.items]
             try:
@@ -239,7 +472,7 @@ class FeedbackService:
         Returns:
             Tuple of (feedback items, total count)
         """
-        # Ensure user_id is a string
+     
         user_id = str(user_id) if user_id else None
         
         query = Feedback.query.filter(Feedback.user_id == user_id)
@@ -251,7 +484,6 @@ class FeedbackService:
         
         paginated = query.paginate(page=page, per_page=per_page)
         
-        # Enrich with user information if requested
         if include_user_info and paginated.items:
             try:
                 user_client = UserClient()
@@ -282,8 +514,6 @@ class FeedbackService:
         query = query.order_by(Feedback.submitted_at.desc())
         
         paginated = query.paginate(page=page, per_page=per_page)
-        
-        # Enrich with user information if requested
         if include_user_info and paginated.items:
             user_ids = [str(item.user_id) for item in paginated.items]
             try:
@@ -313,18 +543,13 @@ class FeedbackService:
         feedback = FeedbackService.get_feedback(feedback_id, include_user_info=True)
         
         if not feedback or requesting_user_id == feedback.user_id:
-            # No need to check connections if it's the user's own feedback
+        
             return feedback
             
         try:
-            # Get connection information between requesting user and feedback author
             user_client = UserClient()
             connections = user_client.get_user_connections(requesting_user_id)
-            
-            # Store connection information in g to access in the to_dict method
             g.user_connections = getattr(g, 'user_connections', {})
-            
-            # Check if feedback author is in the connections list
             for connection in connections:
                 other_user_id = connection.get('other_user_id')
                 if other_user_id == str(feedback.user_id):

@@ -8,109 +8,111 @@ from app.utils.pagination import get_pagination_params
 from app.utils.auth_client import AuthClient, is_admin, has_permission
 from app.utils.user_client import UserClient, has_role
 from app.utils.decorators import jwt_required_with_permissions
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 feedback_bp = Blueprint('feedback', __name__, url_prefix='/feedback')
 
 @feedback_bp.route('', methods=['POST'])
-@jwt_required_with_permissions()
-def create_feedback():
+@jwt_required_with_permissions(['feedback:write'])
+def submit_feedback():
     """Submit feedback for a model response."""
     user_id = str(g.current_user_id)
     data = request.get_json()
     
-    # Validate required fields
-    if not data.get('response_id') or not data.get('dimension_ratings'):
-        return jsonify({'error': 'response_id and dimension_ratings are required'}), 400
+    required_fields = ['interaction_id', 'prompt_id', 'category']
+    if not all(field in data for field in required_fields):
+        return jsonify({
+            'success': False,
+            'message': f'Missing required fields: {", ".join(required_fields)}'
+        }), 400
     
-    # Validate dimension ratings format
-    for rating in data.get('dimension_ratings', []):
-        if 'dimension_id' not in rating or 'score' not in rating:
-            return jsonify({'error': 'Each dimension rating must include dimension_id and score'}), 400
-    
-    feedback = FeedbackService.create_feedback(
-        response_id=data.get('response_id'),
+    result = FeedbackService.submit_feedback(
+        interaction_id=data['interaction_id'],
+        prompt_id=data['prompt_id'],
         user_id=user_id,
-        dimension_ratings=data.get('dimension_ratings'),
-        overall_comment=data.get('overall_comment')
+        category=data['category'],
+        rating=data.get('rating'),
+        binary_evaluation=data.get('binary_evaluation'),
+        ranking=data.get('ranking'),
+        justification=data.get('justification'),
+        metadata=data.get('metadata')
     )
     
-    if isinstance(feedback, dict) and 'error' in feedback:
-        return jsonify({'error': feedback['error']}), 400
-    
-    return jsonify(feedback.to_dict()), 201
+    if result['success']:
+        return jsonify(result), 201
+    else:
+        return jsonify(result), 400
 
 @feedback_bp.route('/<uuid:feedback_id>', methods=['GET'])
-@jwt_required_with_permissions()
+@jwt_required_with_permissions(['feedback:read'])
 def get_feedback(feedback_id):
-    """Get details of a specific feedback entry."""
-    user_id = str(g.current_user_id)
+    """Get feedback by ID."""
+    result = FeedbackService.get_feedback(feedback_id)
     
-    feedback = FeedbackService.get_feedback(feedback_id)
-    if not feedback:
-        return jsonify({'error': 'Feedback not found'}), 404
-    
-    # Check authorization
-    is_owner = feedback.user_id == user_id
-    is_validator = has_role(user_id, 'validator')
-    is_admin_user = has_permission(user_id, 'admin')
-    
-    if not (is_owner or is_validator or is_admin_user):
-        return jsonify({'error': 'Not authorized to view this feedback'}), 403
-    
-    return jsonify(feedback.to_dict()), 200
+    if result['success']:
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 404
 
 @feedback_bp.route('/user', methods=['GET'])
-@jwt_required_with_permissions()
+@jwt_required_with_permissions(['feedback:read'])
 def get_user_feedback():
     """Get feedback submitted by the current user."""
     user_id = str(g.current_user_id)
     
-    # Parse pagination and filter parameters
     page, per_page = get_pagination_params(request)
     status = request.args.get('status')
+    category = request.args.get('category')
     
-    feedback_list, total = FeedbackService.get_user_feedback(
+    result = FeedbackService.get_user_feedback(
         user_id=user_id,
+        status=status,
+        category=category,
         page=page,
-        per_page=per_page,
-        status=status
+        per_page=per_page
     )
     
-    return jsonify({
-        'feedback': [f.to_dict() for f in feedback_list],
-        'total': total,
-        'page': page,
-        'per_page': per_page
-    }), 200
+    return jsonify(result), 200
 
 @feedback_bp.route('/pending', methods=['GET'])
-@jwt_required_with_permissions(['validator:read'])
-def get_pending_feedback():
-    """Get pending feedback awaiting validation."""
-    user_id = str(g.current_user_id)
-    
-    # Check if user is a validator
-    if not has_role(user_id, 'validator'):
-        return jsonify({'error': 'Not authorized to view pending feedback'}), 403
-    
-    # Parse pagination parameters
+@jwt_required_with_permissions(['validation:read'])
+def get_pending_validation():
+    """Get feedback pending validation."""
     page, per_page = get_pagination_params(request)
-    model_id = request.args.get('model_id')
     
-    feedback_list, total = FeedbackService.get_pending_feedback(
-        page=page, 
-        per_page=per_page,
-        model_id=model_id
+    result = FeedbackService.get_pending_validation(
+        page=page,
+        per_page=per_page
     )
     
-    return jsonify({
-        'feedback': [f.to_dict() for f in feedback_list],
-        'total': total,
-        'page': page,
-        'per_page': per_page
-    }), 200
+    return jsonify(result), 200
+
+@feedback_bp.route('/<uuid:feedback_id>/validate', methods=['POST'])
+@jwt_required_with_permissions(['validation:write'])
+def validate_feedback(feedback_id):
+    """Validate submitted feedback."""
+    user_id = str(g.current_user_id)
+    data = request.get_json()
+    
+    if not data or 'status' not in data:
+        return jsonify({
+            'success': False,
+            'message': 'Status is required'
+        }), 400
+    
+    result = FeedbackService.validate_feedback(
+        feedback_id=feedback_id,
+        validator_id=user_id,
+        status=data['status'],
+        notes=data.get('notes')
+    )
+    
+    if result['success']:
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 400
 
 @feedback_bp.route('/response/<uuid:response_id>', methods=['GET'])
 @jwt_required_with_permissions()
@@ -118,7 +120,6 @@ def get_response_feedback(response_id):
     """Get all feedback for a specific response."""
     user_id = str(g.current_user_id)
     
-    # Parse pagination parameters
     page, per_page = get_pagination_params(request)
     
     feedback_list, total = FeedbackService.get_response_feedback(
