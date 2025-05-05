@@ -2,6 +2,7 @@
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 from app import db
+from sqlalchemy.dialects.postgresql import JSONB
 
 class DimensionRating(db.Model):
     """Rating for a specific dimension within feedback."""
@@ -12,7 +13,8 @@ class DimensionRating(db.Model):
     dimension_id = db.Column(UUID(as_uuid=True), db.ForeignKey('evaluation_dimensions.id'), nullable=False, index=True)
     score = db.Column(db.Integer, nullable=False)  # 1-5 rating
     justification = db.Column(db.Text, nullable=True)
-    correct_response = db.Column(db.Text, nullable=True)  # If user marked it incorrect
+    correct_response = db.Column(db.Text, nullable=True) 
+    value = db.Column(JSONB, nullable=False)  # If user marked it incorrect
     
     # Relationships
     feedback = db.relationship('Feedback', back_populates='dimension_ratings')
@@ -33,5 +35,6 @@ class DimensionRating(db.Model):
             'dimension_name': self.dimension.name if self.dimension else None,
             'score': self.score,
             'justification': self.justification,
-            'correct_response': self.correct_response
+            'correct_response': self.correct_response,
+            'value': self.value
         }

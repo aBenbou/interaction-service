@@ -104,3 +104,18 @@ def get_system_metrics():
     )
     
     return jsonify(result), 200 
+
+
+
+def calculate_weighted_average(feedback_items):
+    """Calculate the weighted average score for feedback items."""
+    total_score = 0
+    total_weight = 0
+
+    for feedback in feedback_items:
+        for rating in feedback.dimension_ratings:
+            dimension = rating.dimension
+            total_score += rating.value * dimension.weight
+            total_weight += dimension.weight
+
+    return total_score / total_weight if total_weight > 0 else 0

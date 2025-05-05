@@ -27,6 +27,8 @@ class Interaction(db.Model):
     # Relationships
     prompts = db.relationship('Prompt', back_populates='interaction', 
                              cascade='all, delete-orphan')
+    conversation_history = db.Column(JSONB, default=[], nullable=False)  # New field
+
     
     def to_dict(self):
         """Convert the interaction to a dictionary."""

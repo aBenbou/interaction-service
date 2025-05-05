@@ -37,6 +37,17 @@ class Feedback(db.Model):
     
     interaction = db.relationship('Interaction', back_populates='feedback')
     prompt = db.relationship('Prompt', back_populates='feedback')
+
+    response_id = db.Column(UUID(as_uuid=True), db.ForeignKey('responses.id'), nullable=False, index=True)
+    rating = db.Column(db.Integer, nullable=False)
+    comments = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    claimed_by = db.Column(UUID(as_uuid=True), nullable=True, index=True)  # New field
+    claimed_at = db.Column(db.DateTime, nullable=True)  # New field
+
+    # Relationships
+    response = db.relationship('Response', back_populates='feedback_entries')
+
     
     def to_dict(self):
         """Convert the feedback to a dictionary."""
@@ -57,6 +68,12 @@ class Feedback(db.Model):
             'validation_notes': self.validation_notes,
             'metadata': self.metadata,
             'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat()
+            'updated_at': self.updated_at.isoformat(),
+            'response_id': str(self.response_id),
+            'rating': self.rating,
+            'comments': self.comments,
+            'created_at': self.created_at.isoformat(),
+            'claimed_by': str(self.claimed_by) if self.claimed_by else None,
+            'claimed_at': self.claimed_at.isoformat() if self.claimed_at else None
         }
 

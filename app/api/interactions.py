@@ -1,11 +1,15 @@
 # app/api/interactions.py
 import logging
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, Response, request, jsonify, g
 from app.utils.decorators import jwt_required_with_permissions
 from app.services.interaction_service import InteractionService
 from app.services.prompt_service import PromptService
 from app.utils.pagination import get_pagination_params
 from app.utils.auth_client import AuthClient
+from app.models.feedback import Feedback  # Import Feedback model
+from app.models.interaction import Interaction  # Import Interaction model
+from app.models.prompt import Prompt  # Import Prompt model
+from app import db  # Import the database object
 
 logger = logging.getLogger(__name__)
 
@@ -103,41 +107,81 @@ def update_interaction(interaction_id):
     else:
         return jsonify({'error': 'Invalid status. Use COMPLETED or ABANDONED'}), 400
 
-@interactions_bp.route('/<uuid:interaction_id>/prompts', methods=['POST'])
-@jwt_required_with_permissions()  # No specific permissions required
+# @interactions_bp.route('/<uuid:interaction_id>/prompts', methods=['POST'])
+# @jwt_required_with_permissions()  # No specific permissions required
+# def submit_prompt(interaction_id):
+#     """Submit a prompt to an AI model and get a response."""
+#     user_id = str(g.current_user_id)  # Ensure user_id is a string
+#     data = request.get_json()
+    
+#     if not data.get('content'):
+#         return jsonify({'error': 'content is required'}), 400
+    
+#     # Get interaction
+#     interaction = InteractionService.get_interaction(interaction_id)
+#     if not interaction:
+#         return jsonify({'error': 'Interaction not found'}), 404
+    
+#     # Check if user owns this interaction
+#     if interaction.user_id != user_id:
+#         return jsonify({'error': 'Not authorized to access this interaction'}), 403
+    
+#     # Submit prompt and get response
+#     prompt, response = PromptService.submit_prompt(
+#         interaction_id=interaction_id,
+#         content=data.get('content'),
+#         context=data.get('context', {})
+#     )
+    
+#     if isinstance(prompt, dict) and 'error' in prompt:
+#         return jsonify({'error': prompt['error']}), 400
+    
+#     result = {
+#         'prompt': prompt.to_dict(),
+#         'response': response.to_dict() if response else None
+#     }
+    
+#     return jsonify(result), 201
+@app.route('/interactions/<interaction_id>/prompts', methods=['POST'])
 def submit_prompt(interaction_id):
-    """Submit a prompt to an AI model and get a response."""
-    user_id = str(g.current_user_id)  # Ensure user_id is a string
-    data = request.get_json()
-    
-    if not data.get('content'):
-        return jsonify({'error': 'content is required'}), 400
-    
-    # Get interaction
-    interaction = InteractionService.get_interaction(interaction_id)
+    interaction = Interaction.query.get(interaction_id)
     if not interaction:
-        return jsonify({'error': 'Interaction not found'}), 404
-    
-    # Check if user owns this interaction
-    if interaction.user_id != user_id:
-        return jsonify({'error': 'Not authorized to access this interaction'}), 403
-    
-    # Submit prompt and get response
-    prompt, response = PromptService.submit_prompt(
+        return {"error": "Interaction not found"}, 404
+
+    # Check if feedback is required for the last response
+    last_response = Response.query.filter_by(prompt_id=interaction.prompts[-1].id).first()
+    if last_response and not last_response.feedback_provided:
+        return {"error": "Feedback required for the last response"}, 400
+
+    # Create a new prompt
+    data = request.json
+    new_prompt = Prompt(
         interaction_id=interaction_id,
-        content=data.get('content'),
-        context=data.get('context', {})
+        content=data['content'],
+        sequence_number=len(interaction.prompts) + 1
     )
-    
-    if isinstance(prompt, dict) and 'error' in prompt:
-        return jsonify({'error': prompt['error']}), 400
-    
-    result = {
-        'prompt': prompt.to_dict(),
-        'response': response.to_dict() if response else None
-    }
-    
-    return jsonify(result), 201
+    db.session.add(new_prompt)
+    db.session.commit()
+
+    # Generate a response
+    new_response = Response(
+        prompt_id=new_prompt.id,
+        content="Generated response here",
+        model_endpoint="default-model"
+    )
+    db.session.add(new_response)
+    db.session.commit()
+
+    # Update conversation history
+    interaction.conversation_history.append({
+        "prompt": new_prompt.content,
+        "response": new_response.content
+    })
+    db.session.commit()
+
+    return {"prompt": new_prompt.to_dict(), "response": new_response.to_dict()}, 201
+
+
 
 @interactions_bp.route('/<uuid:interaction_id>/chat', methods=['POST'])
 @jwt_required_with_permissions()  # No specific permissions required
@@ -196,3 +240,26 @@ def get_interaction_history(interaction_id):
         'interaction_id': str(interaction_id),
         'history': history
     }), 200
+
+
+
+@app.route('/responses/<response_id>/feedback', methods=['POST'])
+def provide_feedback(response_id):
+    response = Response.query.get(response_id)
+    if not response:
+        return {"error": "Response not found"}, 404
+
+    # Create feedback
+    data = request.json
+    new_feedback = Feedback(
+        response_id=response_id,
+        rating=data['rating'],
+        comments=data.get('comments', '')
+    )
+    db.session.add(new_feedback)
+
+    # Mark feedback as provided
+    response.feedback_provided = True
+    db.session.commit()
+
+    return {"feedback": new_feedback.to_dict()}, 201
