@@ -31,7 +31,7 @@ class Feedback(db.Model):
     validation_notes = db.Column(db.Text)
     
 
-    metadata = db.Column(JSONB, default={})
+    meta_data = db.Column(JSONB, default={})
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -66,7 +66,7 @@ class Feedback(db.Model):
             'validation_status': self.validation_status,
             'validator_id': self.validator_id,
             'validation_notes': self.validation_notes,
-            'metadata': self.metadata,
+            'metadata': self.meta_data,
             'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
             'response_id': str(self.response_id),

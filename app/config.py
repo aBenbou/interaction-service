@@ -24,7 +24,7 @@ class Config:
     # Database - prioritize SQLALCHEMY_DATABASE_URI over DATABASE_URL
     SQLALCHEMY_DATABASE_URI = os.environ.get('SQLALCHEMY_DATABASE_URI') or os.environ.get(
         'DATABASE_URL', 
-        'postgresql://postgres:postgres@db:5432/interaction_service'
+        'postgresql://postgres:postgres@admin:5432/interaction_service'
     )
     
     # Handle potential "postgres://" format in DATABASE_URL (convert to "postgresql://")

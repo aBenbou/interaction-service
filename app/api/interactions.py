@@ -142,7 +142,7 @@ def update_interaction(interaction_id):
 #     }
     
 #     return jsonify(result), 201
-@app.route('/interactions/<interaction_id>/prompts', methods=['POST'])
+@interactions_bp.route('/interactions/<interaction_id>/prompts', methods=['POST'])
 def submit_prompt(interaction_id):
     interaction = Interaction.query.get(interaction_id)
     if not interaction:
@@ -243,7 +243,7 @@ def get_interaction_history(interaction_id):
 
 
 
-@app.route('/responses/<response_id>/feedback', methods=['POST'])
+@interactions_bp.route('/responses/<response_id>/feedback', methods=['POST'])
 def provide_feedback(response_id):
     response = Response.query.get(response_id)
     if not response:
