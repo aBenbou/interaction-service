@@ -1,3 +1,4 @@
+
 def test_interaction_endpoint(client):
     response = client.get('/api/interactions')
     assert response.status_code == 200

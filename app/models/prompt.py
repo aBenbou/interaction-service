@@ -51,6 +51,7 @@ class Prompt(db.Model):
     sequence_number = db.Column(db.Integer, nullable=False)
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     context = db.Column(JSONB, default={}, nullable=False)
+    feedback = db.relationship('Feedback', back_populates='prompt', cascade='all, delete-orphan')
 
     # Relationships
     interaction = db.relationship('Interaction', back_populates='prompts')

@@ -23,6 +23,8 @@ class Interaction(db.Model):
     )
     # Rename 'metadata' to 'interaction_metadata' to avoid SQLAlchemy reserved name conflict
     interaction_metadata = db.Column(JSONB, default={}, nullable=False)
+    feedback = db.relationship('Feedback', back_populates='interaction', cascade='all, delete-orphan')
+
     
     # Relationships
     prompts = db.relationship('Prompt', back_populates='interaction', 
