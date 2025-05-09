@@ -7,6 +7,7 @@ from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from app.config import Config
+from app.log_config import configure_logging
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,7 +31,7 @@ def create_app(config_class=Config):
         Flask application instance
     """
     app = Flask(__name__)
-    
+    configure_logging(app)
     app.config.from_object(config_class)
     
     env = os.environ.get('FLASK_ENV', 'development')
