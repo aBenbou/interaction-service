@@ -1,10 +1,12 @@
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
-from sqlalchemy import func, desc
+from venv import logger
+from sqlalchemy import case, func, desc
 from app import db
 from app.models.feedback import Feedback
 from app.models.interaction import Interaction
 from app.utils.user_client import user_client
+import logging
 
 class LeaderboardService:
     """Service for managing leaderboards and user rankings."""
