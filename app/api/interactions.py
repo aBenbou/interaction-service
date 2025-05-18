@@ -107,41 +107,6 @@ def update_interaction(interaction_id):
     else:
         return jsonify({'error': 'Invalid status. Use COMPLETED or ABANDONED'}), 400
 
-# @interactions_bp.route('/<uuid:interaction_id>/prompts', methods=['POST'])
-# @jwt_required_with_permissions()  # No specific permissions required
-# def submit_prompt(interaction_id):
-#     """Submit a prompt to an AI model and get a response."""
-#     user_id = str(g.current_user_id)  # Ensure user_id is a string
-#     data = request.get_json()
-    
-#     if not data.get('content'):
-#         return jsonify({'error': 'content is required'}), 400
-    
-#     # Get interaction
-#     interaction = InteractionService.get_interaction(interaction_id)
-#     if not interaction:
-#         return jsonify({'error': 'Interaction not found'}), 404
-    
-#     # Check if user owns this interaction
-#     if interaction.user_id != user_id:
-#         return jsonify({'error': 'Not authorized to access this interaction'}), 403
-    
-#     # Submit prompt and get response
-#     prompt, response = PromptService.submit_prompt(
-#         interaction_id=interaction_id,
-#         content=data.get('content'),
-#         context=data.get('context', {})
-#     )
-    
-#     if isinstance(prompt, dict) and 'error' in prompt:
-#         return jsonify({'error': prompt['error']}), 400
-    
-#     result = {
-#         'prompt': prompt.to_dict(),
-#         'response': response.to_dict() if response else None
-#     }
-    
-#     return jsonify(result), 201
 @interactions_bp.route('/interactions/<interaction_id>/prompts', methods=['POST'])
 def submit_prompt(interaction_id):
     interaction = Interaction.query.get(interaction_id)
