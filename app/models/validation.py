@@ -17,7 +17,7 @@ class ValidationRecord(db.Model):
     
     # Relationship
     feedback = db.relationship('Feedback', back_populates='validation_record')
-    
+
     def to_dict(self):
         """Convert the validation record to a dictionary."""
         return {

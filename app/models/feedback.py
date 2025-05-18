@@ -5,6 +5,7 @@ from flask import g
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app import db
 
+
 class Feedback(db.Model):
     """User feedback on model responses."""
     __tablename__ = 'feedback'
@@ -29,26 +30,26 @@ class Feedback(db.Model):
     )
     validator_id = db.Column(db.String(36), nullable=True)
     validation_notes = db.Column(db.Text)
-    
 
     meta_data = db.Column(JSONB, default={})
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     interaction = db.relationship('Interaction', back_populates='feedback')
     prompt = db.relationship('Prompt', back_populates='feedback')
 
     response_id = db.Column(UUID(as_uuid=True), db.ForeignKey('responses.id'), nullable=False, index=True)
-    rating = db.Column(db.Integer, nullable=False)
     comments = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    claimed_by = db.Column(UUID(as_uuid=True), nullable=True, index=True)  # New field
-    claimed_at = db.Column(db.DateTime, nullable=True)  # New field
+    claimed_by = db.Column(UUID(as_uuid=True), nullable=True, index=True)
+    claimed_at = db.Column(db.DateTime, nullable=True)
 
     # Relationships
     response = db.relationship('Response', back_populates='feedback_entries')
+    validation_record = db.relationship('ValidationRecord', back_populates='feedback', uselist=False)
+    dataset_entry = db.relationship("DatasetEntry", back_populates="feedback")
 
-    
+    # Add the missing relationship to match DimensionRating's back_populates
+    dimension_ratings = db.relationship('DimensionRating', back_populates='feedback')
     def to_dict(self):
         """Convert the feedback to a dictionary."""
         return {
@@ -67,13 +68,12 @@ class Feedback(db.Model):
             'validator_id': self.validator_id,
             'validation_notes': self.validation_notes,
             'metadata': self.meta_data,
-            'created_at': self.created_at.isoformat(),
             'updated_at': self.updated_at.isoformat(),
             'response_id': str(self.response_id),
-            'rating': self.rating,
             'comments': self.comments,
             'created_at': self.created_at.isoformat(),
             'claimed_by': str(self.claimed_by) if self.claimed_by else None,
-            'claimed_at': self.claimed_at.isoformat() if self.claimed_at else None
+            'claimed_at': self.claimed_at.isoformat() if self.claimed_at else None,
+            'dimension_ratings': [dr.to_dict() for dr in self.dimension_ratings] if self.dimension_ratings else []
         }
 
